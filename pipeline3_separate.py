@@ -24,7 +24,7 @@ features_file = 'raw_data_no_unfollowed.csv'
 # file containing header data
 headers_file = 'all_headers.csv'
 # names of subgroups
-groups = ['LCS','cancer','wedge']
+groups = ['early-dev','late-dev_malignant','late-dev_benign']
 # which acquisition parameters are being harmonized over?
 batch_list = ['Manufacturer',
               'FocalSpots',
