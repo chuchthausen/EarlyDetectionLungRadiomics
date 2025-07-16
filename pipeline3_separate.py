@@ -24,7 +24,7 @@ features_file = 'raw_data_no_unfollowed.csv'
 # file containing header data
 headers_file = 'all_headers.csv'
 # names of subgroups
-groups = ['early-dev','late-dev_malignant','late-dev_benign']
+groups = ['LCS','cancer','wedge']
 # which acquisition parameters are being harmonized over?
 batch_list = ['Manufacturer',
               'FocalSpots',
@@ -34,7 +34,7 @@ batch_list = ['Manufacturer',
 isolate = 'patient'
 # incremental percentage of augmentation dataset to include
 # multiples of 5 only (e.g. 5%, 100%)
-run_increments = [5,10]
+run_increments = [100]
 
 ''' END EDIT'''
 # %% set up
@@ -143,7 +143,7 @@ for cv in range(10): # loops through trials
                     
                     # filters and formats training set
                     try:
-                        dat, scans, le_dict, group_col, cancer_col, covars, covars_p = prep_OPNCB(out_path, out_path, out_path+train_tag+'.csv', data_path+headers_file, batch_list, train_tag)
+                        dat, scans, le_dict, group_col, cancer_col, covars = prep_OPNCB(out_path, out_path, out_path+train_tag+'.csv', data_path+headers_file, batch_list, train_tag)
                     except TypeError: # if harmonization will fail
                         bad_try = 1
                         break # exit harmonization loop (don't skip harmonizing just one group)
@@ -194,7 +194,7 @@ for cv in range(10): # loops through trials
                     inner_batch_list = list(set(list(valid_headers['Acquisition Parameter'])))
                     
                     #harmonizes training set
-                    harmonized_data, estimates = run_OPNCB(dat, scans, out_path, group_col, cancer_col, covars, covars_p, inner_batch_list, train_tag, multi_group=False)
+                    harmonized_data, estimates = run_OPNCB(dat, scans, out_path, group_col, cancer_col, covars, inner_batch_list, train_tag, multi_group=False)
                     
                     if g == 'LCS':
                         # applies estimators to test set

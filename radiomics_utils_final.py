@@ -235,15 +235,15 @@ nice_features = ['Shape Elongation',
 find_batches
 
 inputs:
-    headers - dataframe containing header data, expects index = scans, columns = acquisition parameters
-    feature_data - dataframe containing feature_data, expects index = features, columns = scans
-    batch_list - list of the acquisition parameters (columns in headers) that will be harmonized
-    blacklist - scans to exclude (filled in recursive loop)
-    blacklist_df - why scans are excluded (filled in recursive loop)
+    headers - dataframe, containing header data, expects index = scans, columns = acquisition parameters
+    feature_data - dataframe, containing feature_data, expects index = features, columns = scans
+    batch_list - list, the acquisition parameters (columns in headers) that will be harmonized
+    blacklist - list, scans to exclude (filled in recursive loop)
+    blacklist_df - dataframe, why scans are excluded (filled in recursive loop)
 outputs:
     headers - updated dataframe containing only headers of harmonizable training scans
     feature_data - updated dataframe containing only data for harmonizable training scans
-    blacklist_df - scans that were excluded and why
+    blacklist_df - dataframe of scans that were excluded and why
     batch_info - dataframe with non-uniform acquisition parameters of interest, the specific protocols contained in this training set, number of scans with each protocol
     a list of uniform acquisition parameters (do not need harmonization)
 """
@@ -310,11 +310,18 @@ Automates batch selection process for the training set.
 Also requires the output of dicom_header.py with manually added contrast info, containing the headers 
     of at least the scans being harmonized (code will disregard any additional information)
 inputs:
-    data_path: path to folder containing input csv files
+    data_path: str, path to folder containing input csv files
     features_file: str, name of file containing radiomic feature data (output of get_features.py)
     headers_file: str, name of file containing header info (output of dicom_header.py with added contrast info)
     groupct_file: str, name of file to which to write final batch information (end with .csv)
     output_file: str, name of file to which to write harmonized data (end with .csv)
+outputs:
+    dat - dataframe containing ordered feature data, with scans in the columns (numerical index)
+    scans - list, contains the ordered scan labels
+    le_dict - dict, contains the labels encoded for specific acquisition protocols
+    group_col - list, contains group labels of ordered scans
+    cancer_col - list, contains diagnosis labels of ordered scans
+    headers - dataframe containing ordered header information for the scans in dat, with scans in the rows (numerical index)
 """
 def prep_OPNCB(data_path, out_path, features_path, headers_path, batch_list, tag):
     
@@ -363,22 +370,17 @@ def prep_OPNCB(data_path, out_path, features_path, headers_path, batch_list, tag
     # formats headers
     headers.sort_values('Timestep', inplace=True) # alphabetizes
     headers.reset_index(inplace=True)
-    headers_p = headers.Timestep
+    scans = list(headers.Timestep)
     headers.drop('Timestep', axis='columns', inplace=True)
     
     # formats feature data
-    feature_data.sort_index(axis='columns', inplace=True) #alphabetizes
-    scans = list(feature_data.columns)
+    feature_data = feature_data[scans] #alphabetizes
     group_col = list(feature_data.loc['group',:])
     cancer_col = list(feature_data.loc['cancer',:])
-    #vols = get_vol_col(feature_data,scans)
     feature_data = feature_data.set_axis(range(len(scans)), axis ='columns', copy=False)
     
     #uses only radiomic features, not diagnostics
-    dat_list = []
-    for feature in features:
-        dat_list.append(feature_data.loc[feature,:])
-    dat = pd.DataFrame(dat_list)
+    dat = feature_data.loc[features]
     
     # label encodes batch data
     le_dict ={}
@@ -402,9 +404,28 @@ def prep_OPNCB(data_path, out_path, features_path, headers_path, batch_list, tag
     
     print(ex, 'patients excluded:', list(set(list(blacklist_df.index))))
     
-    return dat, scans, le_dict, group_col, cancer_col, headers, headers_p
-    
-def run_OPNCB(dat, scans, out_path, group_col, cancer_col, headers, headers_p, batch_list, tag, multi_group=False):
+    return dat, scans, le_dict, group_col, cancer_col, headers
+
+"""
+run_OPNCB
+Runs the optimized nested ComBat function and saves output data appropriately.
+
+inputs:
+    dat - dataframe, containing ordered feature data, with scans in the columns (numerical index), output of prep_OPNCB
+    scans - list, contains the ordered scan labels, output of prep_OPNCB
+    out_path - str, path where data will be saved
+    group_col - list, contains group labels of ordered scans, output of prep_OPNCB
+    cancer_col - list, contains diagnosis labels of ordered scans, output of prep_OPNCB
+    headers - dataframe containing ordered and label-encoded header information for the scans in dat, with scans in the rows (numerical index), output of prep_OPNCB
+    batch_list - list, acquisition parameters (appearing in the columns of headers) that will be corrected for in harmonization
+    tag - str, label to include in output filenames
+    multi_group - bool, set to True if using a categorical covariate for group
+outputs:
+    write_df - dataframe, harmonized feature data, scans as a column along the index, with columns for group and diagnosis info
+    final_estimates - dict, input batches as keys, values are arrays corresponding to the ComBat estimators trained for the protocols
+"""
+
+def run_OPNCB(dat, scans, out_path, group_col, cancer_col, headers, batch_list, tag, multi_group=False):
     preserve = []
     # use a covariate
     if multi_group:
@@ -413,6 +434,7 @@ def run_OPNCB(dat, scans, out_path, group_col, cancer_col, headers, headers_p, b
 
     print('Harmonizing')
     output_df, final_estimates = nested.OPNestedComBat(dat, headers, batch_list, data_path, categorical_cols = preserve, return_estimates=True)
+    # rename this output file so it won't be overwritten in the next loop
     shutil.move(data_path+'order.txt',out_path+tag+'_order.txt')
 
     write_df = pd.concat([pd.DataFrame(scans), output_df], axis=1) # write results fo file
@@ -426,8 +448,10 @@ def run_OPNCB(dat, scans, out_path, group_col, cancer_col, headers, headers_p, b
 """
 get_batchinfo
 
-groupct_file: str, csv file containing batch info from harmonization (created by run_OpNCB)
-returns: list of parameters used in harmonization
+input:
+    groupct_file - str, name of csv file containing batch info from harmonization (created by run_OpNCB)
+returns: 
+    params - dict, parameters with associated protocols to be used in harmonization
 """
 def get_batchinfo(groupct_path):
     batch_info = pd.read_csv(groupct_path)
@@ -447,17 +471,17 @@ def get_batchinfo(groupct_path):
 """
 kruskal_wallis
 
-Performs the kruskal-wallis test and determines which features must be excluded 
-due to unsuccessful harmonization
+Performs the kruskal-wallis test and determines which features are acquisition-dependent
 
-group_nm: str, short name of group you are testing
-groupct_file: str, csv file containing batch info from harmonization (created by run_OpNCB)
-harm_file: str, csv file containing harmonized data (created by run_OpNCB)
-headers_file: str, name of file containing header info (output of dicom_header.py)
-
+inputs:
+    group_nm - str, short name of group you are testing in the column 'group' in feature data file
+    groupct_file - str, name of csv file containing batch info from harmonization (created by run_OpNCB)
+    harm_path - str, name of csv file containing harmonized data (created by run_OpNCB)
+    headers_path - str, name of file containing header info (output of dicom_header.py)
+    tag - str, label to be included in output filenames
+    publish - bool, set to true if you want to write output files
 returns: 
-    csv file containing numerical results of kruskal-wallis test on all batch groups
-    csv file containing list of features with a significant kruskal-wallis test
+    blacklist - list, names of features that are acquisition-dependent according to this protocol
 """
 def kruskal_wallis(group_nm, out_path, groupct_file, harm_path, headers_path, tag = '', publish=True):
     # read in feature data
@@ -560,15 +584,15 @@ applies the estimators trained in run_OPNCB to the test set
 relies on the *order.txt file output from run_OPNCB being in directory out_path
 
 inputs:
-    test_set - the dataframe containing the feature data, with index = scans, columns = features
-    final_test_group - the scans to be included in the test set
-    test_headers - the dataframe containing the header data (samples not in final_test_group will be excluded)
-    out_path - the directory where data is being read and written
-    batch_list - parameters being controlled for in harmonization
-    estimates - the trained estimators, output from run_OPNCB
-    test_tag - included in file names
-    train_tag - included in file names
-    le_dict - label encoding used for training set, output of run_OPNCB
+    test_set - dataframe, containing the feature data, with index = scans, columns = features
+    final_test_group - list, the scans to be included in the test set
+    test_headers - dataframe, containing the header data (samples not in final_test_group will be excluded)
+    out_path - str, name of the directory where data is being read and written
+    batch_list - list, parameters being controlled for in harmonization
+    estimates - dict, the trained estimators, output from run_OPNCB
+    test_tag - str, included in file names
+    train_tag - str, included in file names
+    le_dict - dict, label encoding used for training set, output of run_OPNCB
 returns:
     output_test - the dataframe containing the test set harmonized by the trained estimators
 """
