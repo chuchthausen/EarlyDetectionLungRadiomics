@@ -11,7 +11,7 @@ import shutil
 from neuroCombat import neuroCombatFromTraining
 
 # folder where your data are saved
-data_path = 'C:/Users/cjhuc/OneDrive/Lung radiomics/pipeline3_7-14_corrected/' 
+data_path = 'C:/Users/cjhuc/OneDrive/Lung radiomics/pipeline3_final/radiomics_data/pipeline3_no_unfollowed/' 
 # folder where your graphs are saved
 graphs_path = 'C:/Users/cjhuc/OneDrive/Lung radiomics/pipeline3_graphs/' 
 
@@ -320,7 +320,7 @@ def prep_OPNCB(data_path, out_path, features_path, headers_path, batch_list, tag
     
     # gets training data
     feature_data = pd.read_csv(features_path, index_col=0)
-    headers = pd.read_csv(headers_path)[['Timestep','group']+batch_list]
+    headers = pd.read_csv(headers_path)[['Timestep']+batch_list]
     
     # standardizes 
     feature_data.index = feature_data.index.str.upper() 
@@ -409,7 +409,8 @@ def run_OPNCB(dat, scans, out_path, group_col, cancer_col, headers, headers_p, b
     # use a covariate
     if multi_group:
         preserve = ['group']
-                  
+    headers['group'] = group_col
+
     print('Harmonizing')
     output_df, final_estimates = nested.OPNestedComBat(dat, headers, batch_list, data_path, categorical_cols = preserve, return_estimates=True)
     shutil.move(data_path+'order.txt',out_path+tag+'_order.txt')
@@ -462,7 +463,7 @@ def kruskal_wallis(group_nm, out_path, groupct_file, harm_path, headers_path, ta
     # read in feature data
     harm_data = pd.read_csv(harm_path, index_col = 0)
     # make sure only data from the desired group is included in the test
-    harm_data = harm_data.groupby(['group']).get_group((group_nm,))
+    harm_data = harm_data.groupby(['group']).get_group(group_nm)
     headers = pd.read_csv(headers_path)
     # properly formats headers
     headers['Timestep'] = [h.upper() for h in list(headers.Timestep)]
@@ -602,7 +603,8 @@ def process_test_set(test_set, final_test_group, test_headers, out_path, batch_l
             test_batch_info = le_dict[param].transform(test_batch_info) # need to label encode to match training set
         # harmonize
         output = neuroCombatFromTraining(dat,test_batch_info,subest)
-        dat = output['data']
+        dat = output['data'] # the corrected version will pass to the next iteration
+        # to be corrected iteratively
     output_test = dat.T
     # put back the non-numerical data
     output_test['cancer']=y
