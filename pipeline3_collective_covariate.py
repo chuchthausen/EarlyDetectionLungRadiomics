@@ -1,4 +1,4 @@
-# Claire Huchthausen
+# author: Claire Huchthausen
 # 2025
 
 from radiomics_utils_final import prep_OPNCB, run_OPNCB, data_path, process_test_set, kruskal_wallis, features
@@ -410,5 +410,6 @@ for cv in range(10):
         print('\a')
 
  
+
 
 
